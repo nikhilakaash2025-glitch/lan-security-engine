@@ -1,0 +1,20 @@
+{
+    "allowed_dns_servers": [
+        "8.8.8.8",
+        "1.1.1.1"
+    ],
+    "expected_dns_answers": {
+        "example.com": [
+            "93.184.215.14"
+        ]
+    },
+    "detection_settings": {
+        "detect_unexpected_answers": true,
+        "detect_unauthorized_servers": true,
+        "detect_conflicting_answers": true,
+        "detect_unsolicited_responses": true,
+        "query_timeout_seconds": 5,
+        "conflict_window_seconds": 30
+    }
+}
+
