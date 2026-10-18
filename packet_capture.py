@@ -1,7 +1,19 @@
 
-"""Packet capture and metadata extraction for the CN review project."""
+"""Packet capture, PCAP reading, and metadata extraction."""
 
-from scapy.all import ARP, DNS, DNSQR, DNSRR, Ether, IP, UDP
+import os
+
+from scapy.all import ARP, DNS, DNSQR, DNSRR, Ether, IP, UDP, PcapReader
+
+
+def read_pcap(file_path):
+    """Yield packets from a saved PCAP file."""
+    if os.path.getsize(file_path) == 0:
+        return
+
+    with PcapReader(file_path) as reader:
+        for packet in reader:
+            yield packet
 
 
 def _dns_name(value):
@@ -11,9 +23,8 @@ def _dns_name(value):
     return str(value).rstrip(".")
 
 
-
 def _record_list(value, expected_type):
-    """Normalize a DNS record, record list, or chained DNS records."""
+    """Normalize a DNS record, list, or chain of DNS records."""
     if value is None:
         return []
 
@@ -26,15 +37,12 @@ def _record_list(value, expected_type):
     if isinstance(value, expected_type):
         records = []
         current = value
-
         while isinstance(current, expected_type):
             records.append(current)
             current = current.payload
-
         return records
 
     return []
-
 
 
 def extract_packet(packet):
@@ -56,22 +64,22 @@ def extract_packet(packet):
         record["src_ip"] = packet[IP].src
         record["dst_ip"] = packet[IP].dst
 
-    # ARP metadata
     if ARP in packet:
         arp = packet[ARP]
-        record["protocol"] = "ARP"
-        record["src_mac"] = arp.hwsrc
-        record["src_ip"] = arp.psrc
-        record["dst_ip"] = arp.pdst
-        record["details"] = {
-            "operation": int(arp.op),
-            "sender_mac": arp.hwsrc,
-            "target_mac": arp.hwdst,
-            "target_ip": arp.pdst,
-        }
+        record.update({
+            "protocol": "ARP",
+            "src_mac": arp.hwsrc,
+            "src_ip": arp.psrc,
+            "dst_ip": arp.pdst,
+            "details": {
+                "operation": int(arp.op),
+                "sender_mac": arp.hwsrc,
+                "target_mac": arp.hwdst,
+                "target_ip": arp.pdst,
+            },
+        })
         return record
 
-    # DNS metadata over UDP
     if DNS in packet and UDP in packet:
         dns = packet[DNS]
         details = {
@@ -81,13 +89,17 @@ def extract_packet(packet):
             "answers": [],
         }
 
-        for question in _record_list(dns.qd[0] if dns.qd else None, DNSQR):
+        for question in _record_list(
+            dns.qd[0] if dns.qd else None, DNSQR
+        ):
             details["questions"].append({
                 "name": _dns_name(question.qname),
                 "type": int(question.qtype),
             })
 
-        for answer in _record_list(dns.an[0] if dns.an else None, DNSRR):
+        for answer in _record_list(
+            dns.an[0] if dns.an else None, DNSRR
+        ):
             details["answers"].append({
                 "name": _dns_name(answer.rrname),
                 "type": int(answer.type),
@@ -96,13 +108,12 @@ def extract_packet(packet):
 
         record["protocol"] = "DNS"
         record["details"] = details
-        return record
 
     return record
 
 
 class PacketCapture:
-    """Process synthetic packets or passively capture authorized lab traffic."""
+    """Process packets or passively capture authorized lab traffic."""
 
     def capture_offline(self, packets):
         """Extract records from an iterable of Scapy packets."""
@@ -127,3 +138,4 @@ class PacketCapture:
             filter="arp or (udp port 53)",
         )
         return self.capture_offline(packets)
+
