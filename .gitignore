@@ -1,4 +1,10 @@
-.venv/
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv/
+venv/
+
+# Environment and generated data
+.env
+*.pcap
