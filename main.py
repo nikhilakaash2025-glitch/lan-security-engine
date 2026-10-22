@@ -14,18 +14,22 @@ from integration_adapter import process_result
 
 
 def report_result(event_type, result):
-    """Score, log, and display response recommendations."""
+    """Score, log, and display response recommendations once per alert."""
     processed = process_result(event_type, result)
 
-    for item in processed:
-        risk = item["risk"]
-        response = item["response"]
+    if not processed:
+        return
 
-        print(f"  Risk score: {risk['risk_score']}/100")
-        print(f"  Threat level: {risk['risk_level']}")
-        print(f"  Recommended action: {response['action']}")
-        print(f"  Response mode: {response['mode']}")
-        print(f"  Packets blocked: {response['blocked']}")
+    # Display one summary for the alert, not once per answer IP.
+    item = processed[0]
+    risk = item["risk"]
+    response = item["response"]
+
+    print(f"  Risk score:       {risk['risk_score']}/100")
+    print(f"  Threat level:     {risk['risk_level']}")
+    print(f"  Recommended action: {response['action']}")
+    print(f"  Response mode:    {response['mode']}")
+    print(f"  Packets blocked:  {response['blocked']}")
 
 
 def process_capture(pcap_file):
@@ -36,7 +40,11 @@ def process_capture(pcap_file):
     packet_count = 0
     alert_count = 0
 
-    print(f"Reading capture: {pcap_file}")
+    print("=" * 60)
+    print("       NETWORK SECURITY DETECTION ENGINE")
+    print("=" * 60)
+    print(f"Capture file: {pcap_file}")
+    print("-" * 60)
 
     try:
         for packet in read_pcap(pcap_file):
@@ -55,12 +63,13 @@ def process_capture(pcap_file):
                         if result["status"] == "alert":
                             alert_count += 1
                             print("\n[ARP ALERT]")
-                            print(f"  IP:      {result['ip']}")
-                            print(f"  Old MAC: {result['old_mac']}")
-                            print(f"  New MAC: {result['new_mac']}")
-                            print(f"  Reason:  {result['reason']}")
+                            print(f"  IP address: {result['ip']}")
+                            print(f"  Previous MAC: {result['old_mac']}")
+                            print(f"  New MAC:      {result['new_mac']}")
+                            print(f"  Reason:       {result['reason']}")
 
                             report_result("ARP", result)
+                            print("-" * 60)
 
                     except ValueError as error:
                         print(f"[ARP PACKET SKIPPED] {error}")
@@ -74,11 +83,24 @@ def process_capture(pcap_file):
                     print("\n[DNS ALERT]")
                     print(f"  Domain: {result.get('domain', 'unknown')}")
 
-                    for item in result.get("alerts", []):
-                        print(f"  Answer IP: {item.get('answer_ip', 'unknown')}")
-                        print(f"  Reason:    {item.get('reason', 'Suspicious DNS result')}")
+                    alerts = result.get("alerts", [])
+                    answer_ips = [
+                        item.get("answer_ip", "unknown")
+                        for item in alerts
+                    ]
+
+                    print(f"  Suspicious answer IPs ({len(answer_ips)}):")
+                    for ip in answer_ips:
+                        print(f"    - {ip}")
+
+                    reasons = list(dict.fromkeys(
+                        item.get("reason", "Suspicious DNS result")
+                        for item in alerts
+                    ))
+                    print(f"  Reason: {reasons[0] if reasons else 'Suspicious DNS result'}")
 
                     report_result("DNS", result)
+                    print("-" * 60)
 
     except FileNotFoundError:
         print(f"Error: capture file not found: {pcap_file}")
@@ -88,10 +110,14 @@ def process_capture(pcap_file):
         print(f"Error: permission denied reading: {pcap_file}")
         return
 
-    print("\n--- Capture Summary ---")
-    print(f"Packets processed: {packet_count}")
-    print(f"Alerts generated:  {alert_count}")
-    print("Enforcement mode: DRY_RUN (no packets blocked)")
+    print("\n" + "=" * 60)
+    print("                 CAPTURE SUMMARY")
+    print("=" * 60)
+    print(f"  Packets processed: {packet_count}")
+    print(f"  Alerts generated:  {alert_count}")
+    print("  Enforcement mode:  DRY_RUN")
+    print("  Packets blocked:   No")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
